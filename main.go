@@ -171,10 +171,16 @@ func handleMention(c *mastodon.Client, notification *mastodon.Notification) {
 
 	response = prependMentions(mentions, notification.Account.Acct, response)
 
+	visablity := notification.Status.Visibility
+
+	if visablity == "public" {
+		visablity = "unlisted"
+	}
+
 	_, err = c.PostStatus(ctx, &mastodon.Toot{
 		Status:      response,
 		InReplyToID: notification.Status.ID,
-		Visibility:  notification.Status.Visibility,
+		Visibility:  visablity,
 		SpoilerText: notification.Status.SpoilerText,
 	})
 
