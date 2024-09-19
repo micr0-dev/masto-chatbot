@@ -55,7 +55,6 @@ func main() {
 		switch e := event.(type) {
 		case *mastodon.NotificationEvent:
 			if e.Notification.Type == "mention" {
-				fmt.Printf("Received mention from @%s: %s\n", e.Notification.Account.Acct, e.Notification.Status.Content)
 				handleMention(c, e.Notification)
 			}
 		case *mastodon.ErrorEvent:
@@ -128,6 +127,11 @@ func getResponse(resp *genai.GenerateContentResponse) string {
 }
 
 func handleMention(c *mastodon.Client, notification *mastodon.Notification) {
+	// Ignore mentions from self and DMs unless they are from @micr0
+	if notification.Account.Acct == os.Getenv("MASTODON_USERNAME") || (notification.Status.Visibility == "direct" && notification.Account.Acct != "micr0") {
+		return
+	}
+
 	content := strings.TrimSpace(notification.Status.Content)
 	content = extractTextFromHTML(content)
 
@@ -254,8 +258,6 @@ func generateAIResponse(prompt string, context []string, user string) (string, e
 	}
 
 	fullPrompt := systemPrompt + user + ": " + prompt + "\nMacr0:"
-
-	fmt.Println(fullPrompt)
 
 	return Generate(fullPrompt)
 }
