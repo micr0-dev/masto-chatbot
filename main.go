@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/google/generative-ai-go/genai"
@@ -135,6 +137,8 @@ func handleMention(c *mastodon.Client, notification *mastodon.Notification) {
 	content := strings.TrimSpace(notification.Status.Content)
 	content = extractTextFromHTML(content)
 
+	mentions, content := extractMentions(content)
+
 	fmt.Printf("Received mention: %s\n", content)
 
 	context := getConversationContext(c, notification.Status, 5)
@@ -163,8 +167,10 @@ func handleMention(c *mastodon.Client, notification *mastodon.Notification) {
 		response = "shit fuck.. something went wrong. try again later?"
 	}
 
+	response = prependMentions(mentions, notification.Account.Acct, response)
+
 	_, err = c.PostStatus(ctx, &mastodon.Toot{
-		Status:      "@" + notification.Account.Acct + " " + response,
+		Status:      response,
 		InReplyToID: notification.Status.ID,
 		Visibility:  notification.Status.Visibility,
 	})
@@ -217,6 +223,33 @@ func getMediaTypeDescription(mediaType string) string {
 	default:
 		return "file"
 	}
+}
+
+func extractMentions(content string) ([]string, string) {
+	re := regexp.MustCompile(`@[\w\.-]+`)
+	mentions := re.FindAllString(content, -1)
+	cleanContent := re.ReplaceAllString(content, "")
+	return mentions, strings.TrimSpace(cleanContent)
+}
+
+func prependMentions(mentions []string, originalMention string, response string) string {
+	mentionSet := make(map[string]bool)
+	for _, mention := range mentions {
+		if mention != "@"+originalMention {
+			mentionSet[mention] = true
+		}
+	}
+
+	mentionSet["@"+originalMention] = true
+
+	uniqueMentions := make([]string, 0, len(mentionSet))
+	for mention := range mentionSet {
+		uniqueMentions = append(uniqueMentions, mention)
+	}
+
+	sort.Strings(uniqueMentions)
+
+	return strings.Join(uniqueMentions, " ") + " " + response
 }
 
 func getConversationContext(c *mastodon.Client, status *mastodon.Status, maxDepth int) []string {
