@@ -223,7 +223,7 @@ func getMediaTypeDescription(mediaType string) string {
 }
 
 func extractMentions(content string) ([]string, string) {
-	re := regexp.MustCompile(`@[\w\.-]+`)
+	re := regexp.MustCompile(`@[\w\.-]+(@[\w\.-]+)?`)
 	mentions := re.FindAllString(content, -1)
 	cleanContent := re.ReplaceAllString(content, "")
 	return mentions, strings.TrimSpace(cleanContent)
@@ -231,15 +231,26 @@ func extractMentions(content string) ([]string, string) {
 
 func prependMentions(mentions []string, originalMention string, response string) string {
 	botUsername := "@" + os.Getenv("MASTODON_USERNAME")
+	localInstance := "@" + strings.Split(os.Getenv("MASTODON_SERVER"), "//")[1]
 	mentionSet := make(map[string]bool)
 
 	for _, mention := range mentions {
+		parts := strings.SplitN(mention, "@", 3)
+		if len(parts) == 3 {
+			mention = "@" + parts[1] + "@" + parts[2]
+		} else if len(parts) == 2 && !strings.Contains(mention, localInstance) {
+			mention = "@" + parts[1] + localInstance
+		}
+
 		if mention != botUsername && mention != "@"+originalMention {
 			mentionSet[mention] = true
 		}
 	}
 
 	if "@"+originalMention != botUsername {
+		if !strings.Contains(originalMention, "@") {
+			originalMention += localInstance
+		}
 		mentionSet["@"+originalMention] = true
 	}
 
