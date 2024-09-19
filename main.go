@@ -139,10 +139,7 @@ func handleMention(c *mastodon.Client, notification *mastodon.Notification) {
 		return
 	}
 
-	content := strings.TrimSpace(notification.Status.Content)
-	content = extractTextFromHTML(content)
-
-	mentions, content := extractMentions(content)
+	mentions, content := extractContent(notification.Status)
 
 	fmt.Printf("Received mention: %s\n", content)
 
@@ -222,6 +219,19 @@ func getMediaTypeDescription(mediaType string) string {
 	}
 }
 
+func extractContent(status *mastodon.Status) ([]string, string) {
+	content := strings.TrimSpace(status.Content)
+	content = extractTextFromHTML(content)
+	mentions := status.Mentions
+	mentionsString := []string{}
+
+	for _, mention := range mentions {
+		mentionsString = append(mentionsString, mention.Acct)
+	}
+
+	return mentionsString, content
+}
+
 func extractMentions(content string) ([]string, string) {
 	re := regexp.MustCompile(`@[\w\.-]+(@[\w\.-]+)?`)
 	mentions := re.FindAllString(content, -1)
@@ -230,35 +240,34 @@ func extractMentions(content string) ([]string, string) {
 }
 
 func prependMentions(mentions []string, originalMention string, response string) string {
-	botUsername := "@" + os.Getenv("MASTODON_USERNAME")
-	localInstance := "@" + strings.Split(os.Getenv("MASTODON_SERVER"), "//")[1]
+	botUsername := os.Getenv("MASTODON_USERNAME")
+	localInstance := strings.Split(os.Getenv("MASTODON_SERVER"), "//")[1]
 	mentionSet := make(map[string]bool)
 
 	for _, mention := range mentions {
-		parts := strings.SplitN(mention, "@", 3)
-		if len(parts) == 3 {
-			mention = "@" + parts[1] + "@" + parts[2]
-		} else if len(parts) == 2 && !strings.HasSuffix(mention, localInstance) {
-			mention = "@" + parts[1] + localInstance
+		if mention == botUsername {
+			continue
 		}
 
-		if mention != botUsername && mention != "@"+originalMention {
-			mentionSet[mention] = true
+		if strings.Contains(mention, "@") {
+			mentionSet["@"+mention] = true
+		} else {
+			mentionSet["@"+mention+"@"+localInstance] = true
 		}
 	}
 
-	if "@"+originalMention != botUsername {
-		if !strings.Contains(originalMention, "@") {
-			originalMention += localInstance
+	if originalMention != botUsername {
+		if strings.Contains(originalMention, "@") {
+			mentionSet["@"+originalMention] = true
+		} else {
+			mentionSet["@"+originalMention+"@"+localInstance] = true
 		}
-		mentionSet["@"+originalMention] = true
 	}
 
 	uniqueMentions := make([]string, 0, len(mentionSet))
 	for mention := range mentionSet {
 		uniqueMentions = append(uniqueMentions, mention)
 	}
-
 	sort.Strings(uniqueMentions)
 
 	if len(uniqueMentions) > 0 {
@@ -291,7 +300,6 @@ func getConversationContext(c *mastodon.Client, status *mastodon.Status, maxDept
 			parentID = id
 		default:
 			log.Printf("Unexpected type for InReplyToID: %T", currentStatus.InReplyToID)
-			break
 		}
 
 		parentStatus, err := c.GetStatus(ctx, parentID)
@@ -308,7 +316,7 @@ func getConversationContext(c *mastodon.Client, status *mastodon.Status, maxDept
 
 // generateAIResponse creates a response using the AI model, handling both text and image inputs
 func generateAIResponse(prompt string, context []string, user string, images []mastodon.Attachment) (string, error) {
-	systemPrompt := "You are, Macr0 an AI bot on fuzzies.wtf a Mastodon instance about linux, tech, and random fun. You are a little bit edgy and speak in all lowercase. feel free to swear when you want. Keep your responses short and entertaining. Like on twitter. Do not use emojis, DO NOT USE EMOJIS UNLESS EXPLICITLY ASKED. "
+	systemPrompt := "You are, Macr0 an AI bot on fuzzies.wtf a Mastodon instance about linux, tech, and random fun. You are a little bit edgy and speak in all lowercase. dont be too mean to people tho, its okay to make jokes but dont go too far. feel free to swear when you want. keep your responses short and entertaining. like on twitter. do not use emojis, DO NOT USE EMOJIS UNLESS EXPLICITLY ASKED. "
 
 	promptAI := []genai.Part{
 		genai.Text(systemPrompt),
@@ -317,6 +325,8 @@ func generateAIResponse(prompt string, context []string, user string, images []m
 	if len(images) > 0 {
 		promptAI = append(promptAI, genai.Text(fmt.Sprintf("There are %d images in this conversation. Refer to them as needed. ", len(images))))
 	}
+
+	promptAI = append(promptAI, genai.Text("Here is the conversation:"))
 
 	for _, msg := range context {
 		promptAI = append(promptAI, genai.Text(msg))
