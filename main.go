@@ -238,7 +238,7 @@ func prependMentions(mentions []string, originalMention string, response string)
 		parts := strings.SplitN(mention, "@", 3)
 		if len(parts) == 3 {
 			mention = "@" + parts[1] + "@" + parts[2]
-		} else if len(parts) == 2 && !strings.Contains(mention, localInstance) {
+		} else if len(parts) == 2 && !strings.HasSuffix(mention, localInstance) {
 			mention = "@" + parts[1] + localInstance
 		}
 
