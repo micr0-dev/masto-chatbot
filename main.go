@@ -160,7 +160,7 @@ func handleMention(c *mastodon.Client, notification *mastodon.Notification) {
 
 	if err != nil {
 		log.Printf("Error generating AI response: %v", err)
-		response = "Oops! Something went wrong. Can you try again?"
+		response = "shit fuck.. something went wrong. try again later?"
 	}
 
 	_, err = c.PostStatus(ctx, &mastodon.Toot{
