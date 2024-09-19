@@ -235,14 +235,18 @@ func extractMentions(content string) ([]string, string) {
 }
 
 func prependMentions(mentions []string, originalMention string, response string) string {
+	botUsername := "@" + os.Getenv("MASTODON_USERNAME")
 	mentionSet := make(map[string]bool)
+
 	for _, mention := range mentions {
-		if mention != "@"+originalMention {
+		if mention != botUsername && mention != "@"+originalMention {
 			mentionSet[mention] = true
 		}
 	}
 
-	mentionSet["@"+originalMention] = true
+	if "@"+originalMention != botUsername {
+		mentionSet["@"+originalMention] = true
+	}
 
 	uniqueMentions := make([]string, 0, len(mentionSet))
 	for mention := range mentionSet {
@@ -251,7 +255,10 @@ func prependMentions(mentions []string, originalMention string, response string)
 
 	sort.Strings(uniqueMentions)
 
-	return strings.Join(uniqueMentions, " ") + " " + response
+	if len(uniqueMentions) > 0 {
+		return strings.Join(uniqueMentions, " ") + " " + response
+	}
+	return response
 }
 
 func getConversationContext(c *mastodon.Client, status *mastodon.Status, maxDepth int) []string {
