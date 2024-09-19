@@ -22,6 +22,7 @@ var model *genai.GenerativeModel
 var ctx context.Context
 
 func main() {
+	// Load environment variables and set up Mastodon client
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
@@ -34,13 +35,14 @@ func main() {
 		AccessToken:  os.Getenv("MASTODON_ACCESS_TOKEN"),
 	})
 
+	// Set up Gemini AI model
 	err = Setup(os.Getenv("GEMINI_API_KEY"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// Connect to Mastodon streaming API
 	ws := c.NewWSClient()
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -49,10 +51,9 @@ func main() {
 		log.Fatalf("Error connecting to streaming API: %v", err)
 	}
 
-	fmt.Println("Connected to streaming API. ")
+	fmt.Println("Connected to streaming API. All systems operational. Waiting for mentions...")
 
-	fmt.Println("All systems operational. Waiting for mentions...")
-
+	// Main event loop
 	for event := range events {
 		switch e := event.(type) {
 		case *mastodon.NotificationEvent:
@@ -71,6 +72,7 @@ func main() {
 	}
 }
 
+// Setup initializes the Gemini AI model with the provided API key
 func Setup(apiKey string) error {
 	ctx = context.Background()
 
@@ -106,6 +108,7 @@ func Setup(apiKey string) error {
 	return nil
 }
 
+// Generate creates a response using the Gemini AI model
 func Generate(strPrompt string) (string, error) {
 	prompt := genai.Text(strPrompt)
 	resp, err := model.GenerateContent(ctx, prompt)
@@ -115,6 +118,7 @@ func Generate(strPrompt string) (string, error) {
 	return getResponse(resp), nil
 }
 
+// getResponse extracts the text response from the AI model's output
 func getResponse(resp *genai.GenerateContentResponse) string {
 	var response string
 	for _, cand := range resp.Candidates {
@@ -128,6 +132,7 @@ func getResponse(resp *genai.GenerateContentResponse) string {
 	return response
 }
 
+// handleMention processes incoming mentions and generates responses
 func handleMention(c *mastodon.Client, notification *mastodon.Notification) {
 	// Ignore mentions from self and DMs unless they are from @micr0
 	if notification.Account.Acct == os.Getenv("MASTODON_USERNAME") || (notification.Status.Visibility == "direct" && notification.Account.Acct != "micr0") {
@@ -141,26 +146,9 @@ func handleMention(c *mastodon.Client, notification *mastodon.Notification) {
 
 	fmt.Printf("Received mention: %s\n", content)
 
-	context := getConversationContext(c, notification.Status, 5)
+	context, images := getConversationContext(c, notification.Status, 5)
 
-	var response string
-	var err error
-
-	if len(notification.Status.MediaAttachments) > 0 {
-		attachment := notification.Status.MediaAttachments[0]
-		if isSupportedImageType(attachment.Type) {
-			response, err = generateAIResponseWithImage(content, context, notification.Account.Username, &attachment)
-		} else {
-			mediaDescription := getMediaTypeDescription(attachment.Type)
-			if attachment.Description != "" {
-				mediaDescription += " with alt text: " + attachment.Description
-			}
-			response, err = generateAIResponse(content+" [User uploaded "+mediaDescription+" that cannot be viewed]", context, notification.Account.Username)
-		}
-
-	} else {
-		response, err = generateAIResponse(content, context, notification.Account.Username)
-	}
+	response, err := generateAIResponse(content, context, notification.Account.Username, images)
 
 	if err != nil {
 		log.Printf("Error generating AI response: %v", err)
@@ -268,13 +256,23 @@ func prependMentions(mentions []string, originalMention string, response string)
 	return response
 }
 
-func getConversationContext(c *mastodon.Client, status *mastodon.Status, maxDepth int) []string {
+// getConversationContext fetches the conversation context and all images
+func getConversationContext(c *mastodon.Client, status *mastodon.Status, maxDepth int) ([]string, []mastodon.Attachment) {
 	context := []string{}
+	var allImages []mastodon.Attachment
 	currentStatus := status
 
-	for i := 0; i < maxDepth && currentStatus.InReplyToID != nil; i++ {
-		var parentID mastodon.ID
+	for i := 0; i < maxDepth && currentStatus != nil; i++ {
+		content := extractTextFromHTML(currentStatus.Content)
+		context = append([]string{fmt.Sprintf("%s: %s", currentStatus.Account.Username, content)}, context...)
 
+		allImages = append(allImages, currentStatus.MediaAttachments...)
+
+		if currentStatus.InReplyToID == nil {
+			break
+		}
+
+		var parentID mastodon.ID
 		switch id := currentStatus.InReplyToID.(type) {
 		case string:
 			parentID = mastodon.ID(id)
@@ -282,6 +280,7 @@ func getConversationContext(c *mastodon.Client, status *mastodon.Status, maxDept
 			parentID = id
 		default:
 			log.Printf("Unexpected type for InReplyToID: %T", currentStatus.InReplyToID)
+			break
 		}
 
 		parentStatus, err := c.GetStatus(ctx, parentID)
@@ -290,50 +289,51 @@ func getConversationContext(c *mastodon.Client, status *mastodon.Status, maxDept
 			break
 		}
 
-		content := extractTextFromHTML(parentStatus.Content)
-		_, content = extractMentions(content)
-		context = append([]string{fmt.Sprintf("%s: %s", parentStatus.Account.Username, content)}, context...)
-
 		currentStatus = parentStatus
 	}
 
-	return context
+	return context, allImages
 }
 
-func generateAIResponse(prompt string, context []string, user string) (string, error) {
-	systemPrompt := "You are, Macr0 an AI bot on fuzzies.wtf a Mastodon instance about linux, tech, and random fun. You are a little bit edgy and speak in all lowercase. feel free to swear when you want. Keep your responses short and entertaining. Like on twitter. Do not use emojis, DO NOT USE EMOJIS UNLESS EXPLICITLY ASKED. Here's the conversation:\n\n"
-
-	for _, msg := range context {
-		systemPrompt += msg + "\n"
-	}
-
-	fullPrompt := systemPrompt + user + ": " + prompt + "\nMacr0:"
-
-	return Generate(fullPrompt)
-}
-
-func generateAIResponseWithImage(prompt string, context []string, user string, attachment *mastodon.Attachment) (string, error) {
-	systemPrompt := "You are, Macr0 an AI bot on fuzzies.wtf a Mastodon instance about linux, tech, and random fun. You are a little bit edgy and speak in all lowercase. feel free to swear when you want. Keep your responses short and entertaining. Like on twitter. Do not use emojis, DO NOT USE EMOJIS UNLESS EXPLICITLY ASKED. An image has been attached to this message. Describe the image and respond to the prompt. Here's the conversation:\n\n"
-
-	for _, msg := range context {
-		systemPrompt += msg + "\n"
-	}
-
-	img, fileExtension, err := downloadImage(attachment.URL)
-	if err != nil {
-		return "", err
-	}
+// generateAIResponse creates a response using the AI model, handling both text and image inputs
+func generateAIResponse(prompt string, context []string, user string, images []mastodon.Attachment) (string, error) {
+	systemPrompt := "You are, Macr0 an AI bot on fuzzies.wtf a Mastodon instance about linux, tech, and random fun. You are a little bit edgy and speak in all lowercase. feel free to swear when you want. Keep your responses short and entertaining. Like on twitter. Do not use emojis, DO NOT USE EMOJIS UNLESS EXPLICITLY ASKED. "
 
 	promptAI := []genai.Part{
 		genai.Text(systemPrompt),
-		genai.Text(user + ": " + prompt),
-		genai.ImageData(fileExtension, img),
-		genai.Text("Macr0:"),
 	}
 
-	if attachment.Description != "" {
-		promptAI = append(promptAI, genai.Text("Image alt text: "+attachment.Description))
+	if len(images) > 0 {
+		promptAI = append(promptAI, genai.Text(fmt.Sprintf("There are %d images in this conversation. Refer to them as needed. ", len(images))))
 	}
+
+	for _, msg := range context {
+		promptAI = append(promptAI, genai.Text(msg))
+	}
+
+	for i, attachment := range images {
+		if isSupportedImageType(attachment.Type) {
+			img, fileExtension, err := downloadImage(attachment.URL)
+			if err != nil {
+				return "", err
+			}
+			promptAI = append(promptAI, genai.ImageData(fileExtension, img))
+			promptAI = append(promptAI, genai.Text(fmt.Sprintf("Image %d: ", i+1)))
+			if attachment.Description != "" {
+				promptAI = append(promptAI, genai.Text("Image alt text: "+attachment.Description))
+			}
+		} else {
+			mediaDescription := getMediaTypeDescription(attachment.Type)
+			if attachment.Description != "" {
+				mediaDescription += " with alt text: " + attachment.Description
+			}
+			promptAI = append(promptAI, genai.Text(fmt.Sprintf("Image %d: [User uploaded %s that cannot be viewed]", i+1, mediaDescription)))
+		}
+	}
+
+	promptAI = append(promptAI, genai.Text(user+": "+prompt))
+
+	promptAI = append(promptAI, genai.Text("Macr0:"))
 
 	resp, err := model.GenerateContent(ctx, promptAI...)
 	if err != nil {
