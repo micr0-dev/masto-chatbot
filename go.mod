@@ -5,7 +5,6 @@ go 1.21.11
 require (
 	github.com/google/generative-ai-go v0.18.0
 	github.com/joho/godotenv v1.5.1
-	github.com/kyokomi/emoji/v2 v2.2.13
 	github.com/mattn/go-mastodon v0.0.8
 	golang.org/x/net v0.29.0
 	google.golang.org/api v0.197.0

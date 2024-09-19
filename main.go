@@ -175,6 +175,7 @@ func handleMention(c *mastodon.Client, notification *mastodon.Notification) {
 		Status:      response,
 		InReplyToID: notification.Status.ID,
 		Visibility:  notification.Status.Visibility,
+		SpoilerText: notification.Status.SpoilerText,
 	})
 
 	if err != nil {
