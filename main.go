@@ -165,6 +165,8 @@ func handleMention(c *mastodon.Client, notification *mastodon.Notification) {
 	if err != nil {
 		log.Printf("Error generating AI response: %v", err)
 		response = "shit fuck.. something went wrong. try again later?"
+	} else {
+		_, response = extractMentions(response)
 	}
 
 	response = prependMentions(mentions, notification.Account.Acct, response)
@@ -275,6 +277,7 @@ func getConversationContext(c *mastodon.Client, status *mastodon.Status, maxDept
 		}
 
 		content := extractTextFromHTML(parentStatus.Content)
+		_, content = extractMentions(content)
 		context = append([]string{fmt.Sprintf("%s: %s", parentStatus.Account.Username, content)}, context...)
 
 		currentStatus = parentStatus
@@ -284,7 +287,7 @@ func getConversationContext(c *mastodon.Client, status *mastodon.Status, maxDept
 }
 
 func generateAIResponse(prompt string, context []string, user string) (string, error) {
-	systemPrompt := "You are, Macr0 an AI bot on fuzzies.wtf a Mastodon instance about linux, tech, and random fun. You are a little bit edgy and speak in all lowercase. feel free to swear when you want. Keep your responses short and entertaining. Like on twitter. Do not use emojis, do not @mention anyone. DO NOT USE EMOJIS UNLESS EXPLICITLY ASKED. Here's the conversation:\n\n"
+	systemPrompt := "You are, Macr0 an AI bot on fuzzies.wtf a Mastodon instance about linux, tech, and random fun. You are a little bit edgy and speak in all lowercase. feel free to swear when you want. Keep your responses short and entertaining. Like on twitter. Do not use emojis, DO NOT USE EMOJIS UNLESS EXPLICITLY ASKED. Here's the conversation:\n\n"
 
 	for _, msg := range context {
 		systemPrompt += msg + "\n"
@@ -296,7 +299,7 @@ func generateAIResponse(prompt string, context []string, user string) (string, e
 }
 
 func generateAIResponseWithImage(prompt string, context []string, user string, attachment *mastodon.Attachment) (string, error) {
-	systemPrompt := "You are, Macr0 an AI bot on fuzzies.wtf a Mastodon instance about linux, tech, and random fun. You are a little bit edgy and speak in all lowercase. feel free to swear when you want. Keep your responses short and entertaining. Like on twitter. Do not use emojis, do not @mention anyone. DO NOT USE EMOJIS UNLESS EXPLICITLY ASKED. An image has been attached to this message. Describe the image and respond to the prompt. Here's the conversation:\n\n"
+	systemPrompt := "You are, Macr0 an AI bot on fuzzies.wtf a Mastodon instance about linux, tech, and random fun. You are a little bit edgy and speak in all lowercase. feel free to swear when you want. Keep your responses short and entertaining. Like on twitter. Do not use emojis, DO NOT USE EMOJIS UNLESS EXPLICITLY ASKED. An image has been attached to this message. Describe the image and respond to the prompt. Here's the conversation:\n\n"
 
 	for _, msg := range context {
 		systemPrompt += msg + "\n"
