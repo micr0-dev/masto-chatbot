@@ -228,23 +228,13 @@ func cleanResponse(response string) string {
 	return response
 }
 
-func isSupportedImageType(mediaType string) bool {
-	supportedTypes := []string{"image/jpeg", "image/png", "image/webp"}
-	for _, t := range supportedTypes {
-		if mediaType == t {
-			return true
-		}
-	}
-	return false
-}
-
 func getMediaTypeDescription(mediaType string) string {
 	switch {
-	case strings.HasPrefix(mediaType, "image/"):
+	case strings.HasPrefix(mediaType, "image"):
 		return "image"
-	case strings.HasPrefix(mediaType, "video/"):
+	case strings.HasPrefix(mediaType, "video"):
 		return "video"
-	case strings.HasPrefix(mediaType, "audio/"):
+	case strings.HasPrefix(mediaType, "audio"):
 		return "audio file"
 	default:
 		return "file"
@@ -360,7 +350,7 @@ func generateAIResponse(prompt string, context []string, user string, images []m
 
 	promptAI = append(promptAI, genai.Text("Here is the conversation:"))
 
-	for _, msg := range context {
+	for _, msg := range context[:len(context)-1] {
 		if detectBypassAttempt(msg) {
 			promptAI = append(promptAI, genai.Text("[Redacted: Bypass attempt detected (Reason: tried to overwrite system prompt)]"))
 		} else {
@@ -369,7 +359,7 @@ func generateAIResponse(prompt string, context []string, user string, images []m
 	}
 
 	for i, attachment := range images {
-		if isSupportedImageType(attachment.Type) {
+		if attachment.Type == "image" {
 			img, fileExtension, err := downloadImage(attachment.URL)
 			if err != nil {
 				return "", err
@@ -395,6 +385,12 @@ func generateAIResponse(prompt string, context []string, user string, images []m
 	}
 
 	promptAI = append(promptAI, genai.Text("Macr0:"))
+
+	// fmt.Println("\nFull prompt:")
+	// for _, part := range promptAI {
+	// 	fmt.Println(part)
+	// }
+	// fmt.Println()
 
 	resp, err := model.GenerateContent(ctx, promptAI...)
 	if err != nil {
