@@ -1,6 +1,6 @@
 module masto-chatbot
 
-go 1.23.0
+go 1.21.11
 
 require (
 	github.com/google/generative-ai-go v0.18.0
