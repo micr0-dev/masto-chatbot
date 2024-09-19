@@ -152,6 +152,7 @@ func handleMention(c *mastodon.Client, notification *mastodon.Notification) {
 		response = "shit fuck.. something went wrong. try again later?"
 	} else {
 		_, response = extractMentions(response)
+		response = cleanResponse(response)
 	}
 
 	response = prependMentions(mentions, notification.Account.Acct, response)
@@ -194,6 +195,27 @@ func extractTextFromHTML(content string) string {
 		return result
 	}
 	return extractText(doc)
+}
+
+func cleanResponse(response string) string {
+	// Remove emojis
+	emojiRegex := regexp.MustCompile(`[\p{So}\p{Sk}]`)
+	response = emojiRegex.ReplaceAllString(response, "")
+
+	// Fix double spaces
+	for strings.Contains(response, "  ") {
+		response = strings.ReplaceAll(response, "  ", " ")
+	}
+
+	// Fix space after period
+	response = strings.ReplaceAll(response, ".  ", ". ")
+	response = strings.ReplaceAll(response, ". ", ".")
+	response = strings.ReplaceAll(response, ".", ". ")
+
+	// Trim any leading or trailing whitespace
+	response = strings.TrimSpace(response)
+
+	return response
 }
 
 func isSupportedImageType(mediaType string) bool {
@@ -316,7 +338,7 @@ func getConversationContext(c *mastodon.Client, status *mastodon.Status, maxDept
 
 // generateAIResponse creates a response using the AI model, handling both text and image inputs
 func generateAIResponse(prompt string, context []string, user string, images []mastodon.Attachment) (string, error) {
-	systemPrompt := "You are, Macr0 an AI bot on fuzzies.wtf a Mastodon instance about linux, tech, and random fun. You are a little bit edgy and speak in all lowercase. dont be too mean to people tho, its okay to make jokes but dont go too far. feel free to swear when you want. keep your responses short and entertaining. like on twitter. do not use emojis, DO NOT USE EMOJIS UNLESS EXPLICITLY ASKED. "
+	systemPrompt := "You are, Macr0 an AI bot on fuzzies.wtf a Mastodon instance about linux, tech, and random fun. You are a little bit edgy and speak in all lowercase. dont be too mean to people tho, its okay to make jokes but dont go too far. feel free to swear when you want. keep your responses short and entertaining. like on twitter. you do not have the ability to use emojis or images. you can only generate text. "
 
 	promptAI := []genai.Part{
 		genai.Text(systemPrompt),
