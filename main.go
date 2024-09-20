@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -421,10 +419,10 @@ func downloadImage(url string) ([]byte, string, error) {
 	return img, fileExtension, nil
 }
 
-const lastPostsFile = "last_posts.json"
-
 func autonomousPosting(c *mastodon.Client) {
 	for {
+		sleepDuration := time.Duration(rand.Intn(160)+20) * time.Minute
+		time.Sleep(sleepDuration)
 
 		status, err := generateAutonomousStatus()
 		if err != nil {
@@ -441,21 +439,12 @@ func autonomousPosting(c *mastodon.Client) {
 			log.Printf("Error posting autonomous status: %v", err)
 		} else {
 			log.Printf("Posted autonomous status: %s", status)
-			err = addLastPost(status)
-			if err != nil {
-				log.Printf("Error adding post to last posts: %v", err)
-			}
 		}
-
-		sleepDuration := time.Duration(rand.Intn(41)+20) * time.Minute
-		time.Sleep(sleepDuration)
 	}
 }
 
 func generateAutonomousStatus() (string, error) {
-	lastPosts := getLastPosts()
-
-	prompt := "Generate a short, engaging post. You are, Macr0 an AI bot on fuzzies.wtf a Mastodon instance about linux, tech, and random fun. You are a little bit edgy and speak in all lowercase. dont be too mean to people tho, its okay to make jokes but dont go too far. feel free to swear when you want. like on twitter. you do not have the ability to use emojis or images. you can only generate text.. Generate a short, engaging post. You are speaking TO THE PEOPLE, not one person. Direct the post at everyone. Always get to the point, dont start your post with an introduction or \"yo\" Here are my last few posts, don't repeat these topics: " + strings.Join(lastPosts, " | ")
+	prompt := "Generate a short, engaging post. You are, Macr0 an AI bot on fuzzies.wtf a Mastodon instance about linux, tech, and random fun. You are a little bit edgy and speak in all lowercase. dont be too mean to people tho, its okay to make jokes but dont go too far. feel free to swear when you want. like on twitter. you do not have the ability to use emojis or images. you can only generate text.. Generate a short, engaging post. You are speaking TO THE PEOPLE, not one person. Direct the post at everyone. Always get to the point, dont start your post with an introduction or \"yo\" or \"hey\". Just get to the point. Keep it short and sweet. "
 
 	fmt.Println("Prompt: ", prompt)
 
@@ -465,57 +454,4 @@ func generateAutonomousStatus() (string, error) {
 	}
 
 	return cleanResponse(response), nil
-}
-
-func getLastPosts() []string {
-	ensureFileExists()
-
-	data, err := os.ReadFile(lastPostsFile)
-	if err != nil {
-		log.Printf("Error reading last posts file: %v", err)
-		return []string{}
-	}
-
-	var posts []string
-	if err := json.Unmarshal(data, &posts); err != nil {
-		log.Printf("Error unmarshaling posts: %v", err)
-		return []string{}
-	}
-
-	return posts
-}
-
-func addLastPost(post string) error {
-	posts := getLastPosts()
-	posts = append([]string{post}, posts...)
-	if len(posts) > 10 {
-		posts = posts[:10]
-	}
-
-	data, err := json.Marshal(posts)
-	if err != nil {
-		return fmt.Errorf("error marshaling posts: %v", err)
-	}
-
-	if err := ioutil.WriteFile(lastPostsFile, data, 0644); err != nil {
-		return fmt.Errorf("error writing posts to file: %v", err)
-	}
-
-	log.Printf("Successfully added post to file. Total posts: %d", len(posts))
-	return nil
-}
-
-func ensureFileExists() {
-	if _, err := os.Stat(lastPostsFile); os.IsNotExist(err) {
-		file, err := os.Create(lastPostsFile)
-		if err != nil {
-			log.Printf("Error creating last posts file: %v", err)
-			return
-		}
-		defer file.Close()
-
-		if _, err := file.Write([]byte("[]")); err != nil {
-			log.Printf("Error initializing last posts file: %v", err)
-		}
-	}
 }
