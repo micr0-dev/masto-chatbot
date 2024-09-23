@@ -149,7 +149,7 @@ func getResponse(resp *genai.GenerateContentResponse) string {
 // handleMention processes incoming mentions and generates responses
 func handleMention(c *mastodon.Client, notification *mastodon.Notification) {
 	// Ignore mentions from self and DMs unless they are from @micr0
-	if notification.Account.Acct == os.Getenv("MASTODON_USERNAME") || (notification.Status.Visibility == "direct" && notification.Account.Acct != "micr0") || notification.Status.Visibility == "private" {
+	if notification.Account.Acct == os.Getenv("MASTODON_USERNAME") || (notification.Status.Visibility == "direct" && notification.Account.Acct != "micr0") || notification.Status.Visibility == "private" || notification.Status.Account.Bot {
 		return
 	}
 
